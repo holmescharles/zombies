@@ -239,3 +239,10 @@ class Bootstrapper():
 
     def sample_data_as_pandas(self, sample_idx):
         return self.data.iloc[sample_idx]
+
+
+def conf_int(statfunc, data, n_boot=1000, seed=None, pool=1):
+    return (
+        Bootstrapper(n_boot=n_boot, seed=seed, pool=pool)
+        .conf_int(statfunc, data)
+        )
