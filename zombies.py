@@ -7,10 +7,7 @@ from scipy import stats
 from tqdm import tqdm
 
 
-DEFAULT_CONFIDENCE = 0.95
-
-
-def confidence_interval(n_boot, seed, confidence=DEFAULT_CONFIDENCE, pool=1):
+def confidence_interval(n_boot=1000, seed=None, confidence=0.95, pool=1):
     def _(statfunc, data):
         stat = statfunc(data)
         bootstats = bootstrap_statistics(n_boot, seed, pool=pool)(
@@ -19,13 +16,13 @@ def confidence_interval(n_boot, seed, confidence=DEFAULT_CONFIDENCE, pool=1):
         jackstats = jackknife_statistics(pool=pool)(statfunc, data)
         cis = np.column_stack([
             bca_ci(confidence)(s, b, j)
-            for s, b, j in zip(stat, bootstats.T, jackstats.T)
+            for s, b, j in zip(np.atleast_1d(stat), bootstats.T, jackstats.T)
             ])
         return same_type_as(stat)(cis)
     return _
 
 
-def bca_ci(confidence=DEFAULT_CONFIDENCE):
+def bca_ci(confidence):
     def _(stat, bootstats, jackstats):
         if np.var(jackstats) == 0:
             warn("A stat had no variance", category=RuntimeWarning)
@@ -77,7 +74,7 @@ def jackknife_statistic(statfunc, data):
     return _
 
 
-def bca_quantiles(confidence=DEFAULT_CONFIDENCE):
+def bca_quantiles(confidence):
     def _(bias, acceleration):
         alpha = 1 - confidence
         quantiles_orig = np.array([alpha / 2, 1 - alpha])
