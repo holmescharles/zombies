@@ -7,13 +7,17 @@ from scipy import stats
 from tqdm import tqdm
 
 
-def confidence_interval(n_boot=1000, seed=None, confidence=0.95, pool=1):
+def confidence_interval(
+        n_boot=1000, seed=None, confidence=0.95, pool=1, silent=False,
+        ):
     def _(statfunc, data):
         stat = statfunc(data)
-        bootstats = bootstrap_statistics(n_boot, seed, pool=pool)(
-            statfunc, data,
-            )
-        jackstats = jackknife_statistics(pool=pool)(statfunc, data)
+        bootstats = bootstrap_statistics(
+            n_boot, seed, pool=pool, silent=silent
+            )(statfunc, data)
+        jackstats = jackknife_statistics(
+            pool=pool, silent=silent,
+            )(statfunc, data)
         cis = np.column_stack([
             bca_ci(confidence)(s, b, j)
             for s, b, j in zip(np.atleast_1d(stat), bootstats.T, jackstats.T)
@@ -35,12 +39,12 @@ def bca_ci(confidence):
     return _
 
 
-def bootstrap_statistics(n_boot, seed, pool=1):
+def bootstrap_statistics(n_boot, seed, pool=1, silent=False):
     def _(statfunc, data):
         seeds_ = seeds(n_boot, seed)
         stats = joblib.Parallel(n_jobs=pool)(
             joblib.delayed(bootstrap_statistic(statfunc, data))(seed)
-            for seed in tqdm(seeds_, desc="Bootstrapping")
+            for seed in tqdm(seeds_, desc="Bootstrapping", disable=silent)
             )
         return np.vstack(stats)
     return _
@@ -55,12 +59,12 @@ def bootstrap_statistic(statfunc, data):
     return _
 
 
-def jackknife_statistics(pool=1):
+def jackknife_statistics(pool=1, silent=False):
     def _(statfunc, data):
         lo_idxs = range(len(data))
         stats = joblib.Parallel(n_jobs=pool)(
             joblib.delayed(jackknife_statistic(statfunc, data))(lo_idx)
-            for lo_idx in tqdm(lo_idxs, desc="Jackknifing")
+            for lo_idx in tqdm(lo_idxs, desc="Jackknifing", disable=silent)
             )
         return np.vstack(stats)
     return _
