@@ -13,11 +13,9 @@ def confidence_interval(
         ):
     stat = statfunc(data)
     bootstats = bootstrap_statistics(
-        n_boot, seed, pool=pool, silent=silent
-        )(statfunc, data)
-    jackstats = jackknife_statistics(
-        pool=pool, silent=silent,
-        )(statfunc, data)
+        statfunc, data, n_boot, seed, pool=pool, silent=silent
+        )
+    jackstats = jackknife_statistics(statfunc, data, pool=pool, silent=silent)
     cis = np.column_stack([
         bca_ci(confidence)(s, b, j)
         for s, b, j in zip(np.atleast_1d(stat), bootstats.T, jackstats.T)
@@ -30,63 +28,54 @@ def bca_ci(confidence):
         if np.var(jackstats) == 0:
             warn("A stat had no variance", category=RuntimeWarning)
             return np.array([bootstats[0]] * 2)
-        quantiles = bca_quantiles(confidence)(
+        quantiles = bca_quantiles(
             bias=bias(stat, bootstats),
             acceleration=acceleration(jackstats),
+            confidence=confidence,
             )
         return np.quantile(bootstats, quantiles)
     return _
 
 
-def bootstrap_statistics(n_boot, seed, pool=1, silent=False):
-    def _(statfunc, data):
-        seeds_ = seeds(n_boot, seed)
-        stats = joblib.Parallel(n_jobs=pool)(
-            joblib.delayed(bootstrap_statistic(statfunc, data))(seed)
-            for seed in tqdm(seeds_, desc="Bootstrapping", disable=silent)
-            )
-        return np.vstack(stats)
-    return _
+def bootstrap_statistics(statfunc, data, n_boot, seed, pool=1, silent=False):
+    seeds_ = seeds(n_boot, seed)
+    stats = joblib.Parallel(n_jobs=pool)(
+        joblib.delayed(bootstrap_statistic)(statfunc, data, seed)
+        for seed in tqdm(seeds_, desc="Bootstrapping", disable=silent)
+        )
+    return np.vstack(stats)
 
 
-def bootstrap_statistic(statfunc, data):
-    def _(seed):
-        rng = np.random.RandomState(seed)
-        bootidx = rng.randint(len(data), size=len(data))
-        boot_data = indexable(data)[bootidx]
-        return statfunc(boot_data)
-    return _
+def bootstrap_statistic(statfunc, data, seed):
+    rng = np.random.RandomState(seed)
+    bootidx = rng.randint(len(data), size=len(data))
+    boot_data = indexable(data)[bootidx]
+    return statfunc(boot_data)
 
 
-def jackknife_statistics(pool=1, silent=False):
-    def _(statfunc, data):
-        lo_idxs = range(len(data))
-        stats = joblib.Parallel(n_jobs=pool)(
-            joblib.delayed(jackknife_statistic(statfunc, data))(lo_idx)
-            for lo_idx in tqdm(lo_idxs, desc="Jackknifing", disable=silent)
-            )
-        return np.vstack(stats)
-    return _
+def jackknife_statistics(statfunc, data, pool=1, silent=False):
+    lo_idxs = range(len(data))
+    stats = joblib.Parallel(n_jobs=pool)(
+        joblib.delayed(jackknife_statistic)(statfunc, data, lo_idx)
+        for lo_idx in tqdm(lo_idxs, desc="Jackknifing", disable=silent)
+        )
+    return np.vstack(stats)
 
 
-def jackknife_statistic(statfunc, data):
-    def _(lo_idx):
-        jack_idx = np.r_[0:lo_idx, (lo_idx + 1):len(data)]
-        jack_data = indexable(data)[jack_idx]
-        return statfunc(jack_data)
-    return _
+def jackknife_statistic(statfunc, data, lo_idx):
+    jack_idx = np.r_[0:lo_idx, (lo_idx + 1):len(data)]
+    jack_data = indexable(data)[jack_idx]
+    return statfunc(jack_data)
 
 
-def bca_quantiles(confidence):
-    def _(bias, acceleration):
-        alpha = 1 - confidence
-        quantiles_orig = np.array([alpha / 2, 1 - alpha])
-        z_orig = stats.norm.ppf(quantiles_orig)
-        numer = z_orig[:, None] + bias
-        denom = 1 - acceleration * numer
-        z_new = bias + (numer / denom)
-        return stats.norm.cdf(z_new)
-    return _
+def bca_quantiles(bias, acceleration, confidence):
+    alpha = 1 - confidence
+    quantiles_orig = np.array([alpha / 2, 1 - alpha])
+    z_orig = stats.norm.ppf(quantiles_orig)
+    numer = z_orig[:, None] + bias
+    denom = 1 - acceleration * numer
+    z_new = bias + (numer / denom)
+    return stats.norm.cdf(z_new)
 
 
 def bias(stat, bootstats):
