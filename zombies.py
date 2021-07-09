@@ -8,22 +8,21 @@ from tqdm import tqdm
 
 
 def confidence_interval(
+        statfunc, data, *,
         n_boot=1000, seed=None, confidence=0.95, pool=1, silent=False,
         ):
-    def _(statfunc, data):
-        stat = statfunc(data)
-        bootstats = bootstrap_statistics(
-            n_boot, seed, pool=pool, silent=silent
-            )(statfunc, data)
-        jackstats = jackknife_statistics(
-            pool=pool, silent=silent,
-            )(statfunc, data)
-        cis = np.column_stack([
-            bca_ci(confidence)(s, b, j)
-            for s, b, j in zip(np.atleast_1d(stat), bootstats.T, jackstats.T)
-            ])
-        return same_type_as(stat)(cis)
-    return _
+    stat = statfunc(data)
+    bootstats = bootstrap_statistics(
+        n_boot, seed, pool=pool, silent=silent
+        )(statfunc, data)
+    jackstats = jackknife_statistics(
+        pool=pool, silent=silent,
+        )(statfunc, data)
+    cis = np.column_stack([
+        bca_ci(confidence)(s, b, j)
+        for s, b, j in zip(np.atleast_1d(stat), bootstats.T, jackstats.T)
+        ])
+    return same_type_as(stat)(cis)
 
 
 def bca_ci(confidence):
